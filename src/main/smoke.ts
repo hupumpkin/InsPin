@@ -847,7 +847,28 @@ export async function runSmokeTest(ctx: SmokeContext): Promise<SmokeCheck[]> {
   let numberCommit: Record<string, unknown> | null = null
   if (fontFieldSpot) {
     const wc = ctx.canvasView.webContents
+    const waitForFontFieldSelection = async (): Promise<boolean> => {
+      const deadline = Date.now() + 1000
+      while (Date.now() < deadline) {
+        const selected = (await evaluate(
+          ctx.canvasView,
+          `(() => {
+            const input = document.querySelector('.element-props__number--fixed input')
+            return Boolean(
+              input &&
+                document.activeElement === input &&
+                input.selectionStart === 0 &&
+                input.selectionEnd === input.value.length
+            )
+          })()`
+        )) as boolean
+        if (selected) return true
+        await new Promise((resolve) => setTimeout(resolve, 16))
+      }
+      return false
+    }
     await realClick(ctx.canvasView, fontFieldSpot)
+    await waitForFontFieldSelection()
     wc.sendInputEvent({ type: 'keyDown', keyCode: 'A', modifiers: ['meta'] })
     wc.sendInputEvent({ type: 'keyUp', keyCode: 'A', modifiers: ['meta'] })
     wc.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' })
@@ -878,6 +899,7 @@ export async function runSmokeTest(ctx: SmokeContext): Promise<SmokeCheck[]> {
 
     // 输入新的整数并回车：应立刻应用。
     await realClick(ctx.canvasView, fontFieldSpot)
+    await waitForFontFieldSelection()
     wc.insertText('60')
     wc.sendInputEvent({ type: 'keyDown', keyCode: 'Enter' })
     wc.sendInputEvent({ type: 'keyUp', keyCode: 'Enter' })
