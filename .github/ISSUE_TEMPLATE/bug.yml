@@ -1,0 +1,43 @@
+name: Bug report
+description: 报告可以稳定复现的问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: InsPin 版本
+      placeholder: 例如 0.2.0-internal.2
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS 与芯片
+      placeholder: 例如 macOS 14.6 / Apple M2
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 重现步骤
+      description: 请给出最短、稳定的操作步骤。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期结果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: 已脱敏的日志或截图
+      description: 不要上传 Cookie、令牌、完整网址、私人图片、项目数据库或其他敏感数据。

@@ -1,0 +1,51 @@
+{
+  "name": "ins-pin",
+  "productName": "InsPin",
+  "version": "0.2.0-internal.2",
+  "private": true,
+  "description": "InsPin — 本地灵感画布（macOS，本地优先）",
+  "author": "InsPin",
+  "type": "commonjs",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "npm run build:cutout && electron-vite dev",
+    "build": "npm run build:cutout && electron-vite build",
+    "start": "npm run build:cutout && electron-vite preview",
+    "build:cutout": "bash scripts/build-subject-lift.sh",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "gen:icon": "node scripts/gen-icon.mjs",
+    "launcher": "bash scripts/build-launcher.sh",
+    "smoke": "npm run build:cutout && electron-vite build && env -u ELECTRON_RUN_AS_NODE electron . --smoke",
+    "experiment:inject": "env -u ELECTRON_RUN_AS_NODE electron scripts/experiment-inject.mjs",
+    "experiment:service": "esbuild scripts/experiment-service.ts --bundle --platform=node --format=cjs --external:electron --outfile=/tmp/inspin-experiment-service.cjs && env -u ELECTRON_RUN_AS_NODE electron /tmp/inspin-experiment-service.cjs",
+    "experiment:acceptance": "esbuild scripts/experiment-service.ts --bundle --platform=node --format=cjs --external:electron --outfile=/tmp/inspin-experiment-service.cjs && env -u ELECTRON_RUN_AS_NODE electron /tmp/inspin-experiment-service.cjs --acceptance",
+    "package": "npm run gen:icon && npm run build:cutout && electron-vite build && electron-builder",
+    "testpack": "bash scripts/build-testpack.sh"
+  },
+  "dependencies": {
+    "@melloware/coloris": "^0.25.0",
+    "immer": "^10.1.1",
+    "pixi.js": "^8.22.0",
+    "react": "^19.3.0",
+    "react-arborist": "^4.0.1",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
+    "react-dom": "^19.3.0",
+    "reicon-react": "^1.2.6",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.7.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.4"
+  }
+}

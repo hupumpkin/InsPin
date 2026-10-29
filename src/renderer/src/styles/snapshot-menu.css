@@ -1,0 +1,117 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  font-family: var(--font);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 设计规范 2.3.9 / 42:2953：221 × 128，pad 8，两行滑杆 + 一行动作。 */
+.snapshot-menu {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 8px;
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  /* 描边用 shadow 画，不占 0.5px 的布局空间；否则 221×128 的内容会溢出 1px，
+     右下角出现滚动条、按钮被截断。 */
+  box-shadow:
+    0 0 0 0.5px rgba(0, 0, 0, 0.07),
+    0 0 4px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.snapshot-menu__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.snapshot-menu__control {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  height: 36px;
+  padding: 8px;
+  border-radius: 10px;
+  color: #3d414d;
+  font-size: 14px;
+  line-height: normal;
+}
+
+.snapshot-menu__control > input[type='range'] {
+  width: 149px;
+  height: 16px;
+  margin: 0;
+  border-radius: 99px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 100% 12px;
+  outline: none;
+  cursor: ew-resize;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.snapshot-menu__control > input[type='range']::-webkit-slider-runnable-track {
+  height: 12px;
+  border-radius: 99px;
+  background: transparent;
+}
+
+.snapshot-menu__control > input[type='range']::-webkit-slider-thumb {
+  width: 16px;
+  height: 16px;
+  margin-top: -2px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #6d54eb;
+  box-shadow: 0 1px 3px rgba(23, 26, 38, 0.18);
+  cursor: ew-resize;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.snapshot-menu__control > input[type='range']:focus-visible {
+  box-shadow: 0 0 0 2px rgba(109, 84, 235, 0.22);
+}
+
+.snapshot-menu__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.snapshot-menu__actions button {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  color: #3d414d;
+  background: #f1f1f1;
+  font: inherit;
+  font-size: 14px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.snapshot-menu__actions button:hover,
+.snapshot-menu__actions button:focus-visible {
+  background: #e9e9eb;
+  outline: 0;
+}

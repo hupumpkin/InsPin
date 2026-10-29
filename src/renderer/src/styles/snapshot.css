@@ -1,0 +1,148 @@
+/* 参考快照浮窗（D5）。
+   窗口本身是透明无边框的（主进程 BrowserWindow transparent: true），
+   圆角与投影由这里画——所以 html/body 必须是透明的，背景色只加在内容块上。 */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+}
+
+body {
+  font-family: var(--font);
+  /* 浮窗是"看"的东西，选不中文字更像一块贴纸 */
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+
+.snap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.snap[data-locked='true'] {
+  cursor: default;
+}
+
+.snap:active {
+  cursor: grabbing;
+}
+
+.snap[data-locked='true']:active {
+  cursor: default;
+}
+
+/* 内容层**不铺底色、不投阴影**：透明底的 PNG 要原样透出去。
+   垫一层白或加一圈矩形阴影，都会让"透明"看起来是假的。 */
+.snap__content {
+  position: absolute;
+  inset: 0;
+}
+
+/* 可视框：裁切后的图片比它大，超出的部分由这里裁掉 */
+.snap__layer {
+  position: absolute;
+  overflow: hidden;
+}
+
+/* 参考图：绝对定位，坐标由主进程算好的盒子乘上缩放得来 */
+.snap__img {
+  position: absolute;
+  display: block;
+  object-fit: fill;
+  /* 拖窗口时别让浏览器把图当成可拖拽元素抢走指针 */
+  -webkit-user-drag: none;
+}
+
+/* 源素材文件不在了（D5.6）：给一句人话，而不是空白或裂图 */
+.snap__missing {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  box-sizing: border-box;
+  border: 1px dashed var(--help);
+  border-radius: 6px;
+  color: var(--help);
+  background: var(--canvas);
+  font-size: 11px;
+  text-align: center;
+  overflow: hidden;
+}
+
+.snap__empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  color: var(--help);
+  font-size: 12px;
+}
+
+/* 右上角那排按钮：鼠标移上来才浮出。
+   平时 opacity:0 且 pointer-events:none（不然会挡住底下的图、也点得到空按钮），
+   但**始终参与布局**——主进程要靠它的位置判断"指针压到按钮上没有"。 */
+.snap__controls {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-hover) var(--ease-hover);
+}
+
+.snap__controls[data-visible='true'] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.snap__ctrl {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: var(--control);
+  /* 半透明白底：压在深浅两种参考图上都看得清，又不至于挡住内容 */
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
+  cursor: pointer;
+  transition: background var(--motion-hover) var(--ease-hover);
+}
+
+.snap__ctrl:hover {
+  background: #ffffff;
+}
+
+.snap__ctrl:focus-visible {
+  outline: 2px solid var(--control);
+  outline-offset: 2px;
+}
+
+/* 刷新结果：成功提示由脚本在 1 秒后收起；失败提示仍可手动关闭。 */
+.snap__notice {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  max-width: calc(100% - 16px);
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--surface);
+  background: var(--control);
+  box-shadow: var(--shadow-toolbar);
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}

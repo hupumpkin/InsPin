@@ -1,0 +1,44 @@
+# 内部试用渠道的身份。正式版发布时改回 com.inspin.app / InsPin，
+# 两者用户数据目录不同，可以并存。
+appId: com.inspin.internal
+productName: InsPin 内测版
+copyright: InsPin
+
+directories:
+  output: dist
+  buildResources: build
+
+# 运行时不需要 node_modules：main/preload 只 require electron 与 node 内置模块
+# （electron-vite 的 externalizeDepsPlugin 只把 dependencies 标为 external，而它们
+# 只在 renderer 里用、已被 Vite 打进 bundle），renderer 已完整打包。
+# 起始页 HTML 是内联在 start-page.ts 里的字符串，所以没有额外资源要带。
+asar: true
+npmRebuild: false
+
+files:
+  - out/**/*
+  - package.json
+  - '!node_modules/**/*'
+
+extraResources:
+  # Apple Vision 主体分割工具；由 build:cutout 在打包前生成。
+  - from: native/SubjectLift/subject-lift
+    to: subject-lift
+
+mac:
+  category: public.app-category.graphics-design
+  icon: build/icon.png
+  # 临时签名（adhoc）。**这一步不能省**：Apple Silicon 上打包后的 .app 必须有一个
+  # 覆盖 Resources 的有效签名才能启动，否则双击没反应、直接退出。
+  # 这跟"要不要做 Developer ID 签名与公证"（路线图 §1.3 暂不做）是两回事——
+  # 那是为了分发给别人，这是为了自己机器上能跑起来。
+  identity: '-'
+  # 硬运行时要关掉：临时签名 + 硬运行时 = 库校验会拦住加载自己的 Electron Framework，
+  # 表现就是双击没反应、进程直接退出。硬运行时是公证才需要的东西，我们不做公证。
+  hardenedRuntime: false
+  # 自用，不做公证
+  notarize: false
+  target:
+    - target: dir
+      arch:
+        - arm64

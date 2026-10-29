@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" fill="none" aria-labelledby="title desc" role="img">
+  <title id="title">裁切</title>
+  <desc id="desc">两组交错的裁切角标</desc>
+  <path d="M11 7v16a6 6 0 0 0 6 6h16" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M29 33V17a6 6 0 0 0-6-6H7" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

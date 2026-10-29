@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- 与主界面同一套 CSP：参考图走 ins-pin-asset: 自定义协议（img-src） -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob: ins-pin-asset:; style-src 'self' 'unsafe-inline';"
+    />
+    <title>参考快照</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/snapshot-main.tsx"></script>
+  </body>
+</html>

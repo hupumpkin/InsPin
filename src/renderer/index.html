@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- ins-pin-asset: 是主进程注册的素材协议（见 src/main/asset-protocol.ts）。
+         img-src 是给 <img> 用的；connect-src 是给 PixiJS 的纹理加载用的——
+         它走 fetch 拿字节，没有 connect-src 就会落到 default-src 'self' 上被拦掉，
+         而且**不会报错**，画布只是空着，很难查。两个都要放行。 -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data: blob: ins-pin-asset:; connect-src 'self' data: blob: ins-pin-asset:; style-src 'self' 'unsafe-inline';"
+    />
+    <title>InsPin</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

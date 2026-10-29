@@ -1,0 +1,114 @@
+/* InsPin 设计 token — 唯一依据 docs/InsPin-设计规范.html。
+   2026-10-26：应用四项归一化建议（半像素、说明文字对比度、紫色合并、危险色统一）。 */
+
+:root {
+  /* 1 · 色彩 */
+  --canvas: #f5f4f7;
+  --surface: #ffffff;
+  --tab-surface: #f4f4f4;
+  /* 本地素材面板（Relay 33:3411）：内容控件、回收站与空态强调色。 */
+  --library-component: #f5f6fa;
+  --library-component-hover: #f1f1f1;
+  /* 与画布层 --danger 合并后的素材危险色 */
+  --library-danger: #d92d20;
+  --library-danger-soft: #fff1f0;
+  /* 与品牌主色合并后的素材强调色 */
+  --library-accent: #6d54eb;
+  --library-accent-hover: #5e45d9;
+  --library-accent-shadow: rgba(109, 84, 235, 0.16);
+
+  /* 品牌层：品牌标识与主操作（规范语义） */
+  --primary: #6d54eb;
+  --primary-hover: #5e45d9;
+  --primary-pressed: #5139bf;
+  --primary-soft: #f3f0ff;
+  --primary-border: #dcd5fc;
+
+  /* 危险语义层：删除、破坏性操作 */
+  --danger: #d92d20;
+  --danger-hover: #b42318;
+  --danger-soft: #fff1f0;
+
+  --text: #171a26;
+  --control: #3d414d;
+  --help: #6b7078;
+  --nav-icon: #4e535d;
+  --tab-glyph: #595e68;
+  --close-icon: #626873;
+  --address-text: #292929;
+
+  --line: rgba(0, 0, 0, 0.07);
+  /* 悬停底色：设计稿里以字面值出现在工具按钮上，这里提成 token 供列表项复用 */
+  --hover: #f1f1f3;
+  /* 分栏线（D3.5）：设计稿没画，按零彩度补一条中性灰。--line 太淡，拖拽时看不见 */
+  --divider-hover: rgba(0, 0, 0, 0.16);
+  /* 分栏线热区宽度（D3.5）：6px */
+  --splitter-hotzone: 6px;
+
+  /* 画布选择层专用强调色（品牌紫）。
+     2026-10-27 由用户拍板：画布上的选择框、悬停预选框、框选、裁切框、截图框
+     统一使用品牌紫 #6D54EB；**只限画布**。工具条、面板、菜单等界面 chrome
+     仍保持零彩度，悬停 / 焦点 / 选中工具也继续用中性灰。不要在别处引用这几个变量。 */
+  --selection: #6d54eb;
+  /* 对齐参考线保留 Figma 的红色（参考线不是选中态，红色语义不变）。 */
+  --guide: #f24822;
+  --selection-fill: rgba(109, 84, 235, 0.1);
+  --selection-shadow: rgba(109, 84, 235, 0.24);
+
+  /* 2 · 排版 */
+  --font:
+    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'PingFang-SC', 'Helvetica Neue', Arial,
+    sans-serif;
+  --font-address: Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* 3 · 间距刻度（整数化） */
+  --space-1: 6px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+  --space-7: 40px;
+  --space-8: 72px;
+
+  /* 3 · 关键尺寸 */
+  --size-corner: 40px;
+  --size-tool: 35px;
+  --size-icon: 24px;
+
+  /* 4 · 圆角（整数化） */
+  --radius-tool: 8px;
+  --radius-toolbar: 12px;
+  --radius-corner: 12px;
+  --radius-browser: 24px;
+
+  /* 4 · 阴影 */
+  --shadow-toolbar: 0 0 7.67px rgba(0, 0, 0, 0.12);
+  --shadow-panel: 23px 0 50px rgba(23, 26, 38, 0.08);
+  --shadow-asset: 0 3.5px 11.5px rgba(23, 26, 38, 0.1);
+  /* 新增：设计稿未定义下拉/弹层。居中的浮层用不了 --shadow-panel（那是有方向的左投影），
+     这里补一个四周投下的柔和投影，颜色仍取 --text 的中性深灰，不引入新色。 */
+  --shadow-overlay: 0 12px 32px rgba(23, 26, 38, 0.18);
+
+  /* 画布 Toast（Relay 节点 31:71）：状态色只在反馈图标上使用。 */
+  --toast-surface: rgba(0, 0, 0, 0.7);
+  --toast-text: #ffffff;
+  --toast-success: #00b86b;
+  --toast-error: #ff4d5d;
+  --toast-info: #2f80ff;
+  --toast-radius: 8px;
+  --toast-icon-size: 14px;
+  --toast-gap: 5px;
+  --toast-padding-x: 16px;
+  --toast-padding-y: 13px;
+
+  /* 5 · 动效 */
+  --motion-hover: 160ms;
+  --ease-hover: ease;
+  --motion-panel: 260ms;
+  --ease-panel: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* 底部工具条收放：250ms 的 easeOutQuint，起步快、收尾慢，避免线性收窄的生硬感 */
+  --motion-controls: 250ms;
+  --ease-controls: cubic-bezier(0.22, 1, 0.36, 1);
+}
