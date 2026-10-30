@@ -1,7 +1,7 @@
 {
   "name": "ins-pin",
   "productName": "InsPin",
-  "version": "0.2.0-internal.2",
+  "version": "0.2.1-internal.1",
   "private": true,
   "description": "InsPin — 本地灵感画布（macOS，本地优先）",
   "author": "InsPin",

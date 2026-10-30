@@ -41,7 +41,6 @@ import type {
 import type { AppSettings } from '../../shared/settings'
 import type {
   ImageSearchCatalogItem,
-  ImageSearchCollectLayout,
   ImageSearchProgress,
   ImageSearchStartRequest,
   ImageSearchStartResult
@@ -132,10 +131,14 @@ export interface InsPinApi {
     setCovered(covered: boolean): void
     captureStart(mode?: CaptureMode): Promise<CaptureStartResult>
     captureCancel(): Promise<void>
+    /** 智能采集中切换冻结 / 不冻结，保持连续排布锚点。 */
+    captureSwitch(freeze: boolean): Promise<CaptureStartResult>
     onSmartCollectPicked(listener: (pick: SmartCollectionPick) => void): () => void
     onStateChanged(listener: (state: BrowserState) => void): () => void
     onPanelChanged(listener: (layout: PanelLayout) => void): () => void
     onSmartCollectRequested(listener: () => void): () => void
+    /** 网页有焦点时按下「切换锁定 / 滚动屏幕」快捷键 */
+    onToggleCollectModeRequested(listener: () => void): () => void
     /** 网页里按 Esc 退出了采集，界面要把采集状态清掉 */
     onCaptureEnded(listener: () => void): () => void
   }
@@ -147,7 +150,6 @@ export interface InsPinApi {
     /** 主进程推来「搜索走到哪一步」；返回取消订阅 */
     onProgress(listener: (progress: ImageSearchProgress) => void): () => void
     acceptConsent(): Promise<AppSettings>
-    collect(projectId: string, layout?: ImageSearchCollectLayout): Promise<ImportResult>
   }
   settings: {
     /** 程序坞右键 / 应用菜单点了设置：主进程推过来，界面把面板打开 */

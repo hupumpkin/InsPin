@@ -52,6 +52,8 @@ export const IpcChannel = {
   browserCaptureStart: 'ins-pin:browser-capture-start',
   /** 区域截图：放弃这次框选，把原生视图放回来 */
   browserCaptureCancel: 'ins-pin:browser-capture-cancel',
+  /** 智能采集进行中：在冻结 / 不冻结之间切换，保持同一次采集会话。 */
+  browserCaptureSwitch: 'ins-pin:browser-capture-switch',
   /** 智能采集非冻结模式：通知网页开始/停止监听用户点击。 */
   browserSmartCollectMode: 'ins-pin:browser-smart-collect-mode',
   /** 网页预加载层 → 主进程：用户在智能采集模式中点击了当前位置。 */
@@ -86,8 +88,6 @@ export const IpcChannel = {
   imageSearchProgress: 'ins-pin:image-search-progress',
   /** 以图搜图：用户确认「图片会上传到第三方」 */
   imageSearchAcceptConsent: 'ins-pin:image-search-accept-consent',
-  /** 以图搜图：把结果页当前可见的大图批量收进画布 */
-  imageSearchCollect: 'ins-pin:image-search-collect',
   /** Apple Vision 抠图：系统与随包组件是否可用。 */
   cutoutCapability: 'ins-pin:cutout-capability',
   /** Apple Vision 抠图：对当前单选图片执行主体分割。 */
@@ -129,6 +129,8 @@ export const IpcChannel = {
   browserStateChanged: 'ins-pin:browser-state-changed',
   /** 主进程 → 界面：网页聚焦时按下了智能采集快捷键 */
   browserSmartCollectRequested: 'ins-pin:browser-smart-collect-requested',
+  /** 主进程 → 界面：网页聚焦时按下了「切换锁定 / 滚动屏幕」快捷键 */
+  browserToggleCollectModeRequested: 'ins-pin:browser-toggle-collect-mode-requested',
   /** 主进程 → 界面：面板布局变了（窗口缩放降级、停靠切换、宽度变化） */
   browserPanelChanged: 'ins-pin:browser-panel-changed',
   /** 主进程 → 界面：打开设置面板（程序坞右键 / 应用菜单都走这条） */

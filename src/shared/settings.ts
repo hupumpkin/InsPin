@@ -34,8 +34,6 @@ export interface AppSettings {
   freezeSmartCollection: boolean
   /** 用户是否已确认「以图搜图会把图片上传到第三方站点」 */
   imageSearchConsent: boolean
-  /** 一次最多收下多少张结果图（1–50） */
-  imageSearchCollectLimit: number
   assetCleanup: AssetCleanupSettings
   shortcuts: ShortcutBindings
 }
@@ -53,7 +51,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   openBrowserOnLaunch: true,
   freezeSmartCollection: true,
   imageSearchConsent: false,
-  imageSearchCollectLimit: 12,
   assetCleanup: { ...DEFAULT_ASSET_CLEANUP },
   shortcuts: { ...DEFAULT_SHORTCUTS }
 }
@@ -99,12 +96,6 @@ export function normalizeSettings(raw: unknown): AppSettings {
       typeof data.imageSearchConsent === 'boolean'
         ? data.imageSearchConsent
         : DEFAULT_SETTINGS.imageSearchConsent,
-    imageSearchCollectLimit: clampDays(
-      data.imageSearchCollectLimit,
-      DEFAULT_SETTINGS.imageSearchCollectLimit,
-      1,
-      50
-    ),
     assetCleanup: {
       enabled: typeof cleanupRaw.enabled === 'boolean' ? cleanupRaw.enabled : DEFAULT_ASSET_CLEANUP.enabled,
       graceDays: clampDays(
@@ -135,11 +126,10 @@ export function mergeSettings(current: AppSettings, patch: unknown): AppSettings
     openBrowserOnLaunch: current.openBrowserOnLaunch,
     freezeSmartCollection: current.freezeSmartCollection,
     imageSearchConsent: current.imageSearchConsent,
-    imageSearchCollectLimit: current.imageSearchCollectLimit,
     assetCleanup: current.assetCleanup,
     shortcuts: current.shortcuts
   }
-  for (const key of ['copyConvertToPng', 'canvasColor', 'libraryView', 'openBrowserOnLaunch', 'freezeSmartCollection', 'imageSearchConsent', 'imageSearchCollectLimit'] as const) {
+  for (const key of ['copyConvertToPng', 'canvasColor', 'libraryView', 'openBrowserOnLaunch', 'freezeSmartCollection', 'imageSearchConsent'] as const) {
     if (key in data) next[key] = data[key]
   }
   if (typeof data.assetCleanup === 'object' && data.assetCleanup !== null) {

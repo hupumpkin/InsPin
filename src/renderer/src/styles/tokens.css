@@ -111,4 +111,8 @@
   /* 底部工具条收放：250ms 的 easeOutQuint，起步快、收尾慢，避免线性收窄的生硬感 */
   --motion-controls: 250ms;
   --ease-controls: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 分段开关的滑块：200ms，起步果断、末端轻放（snappy product 曲线）。
+     再快会显得机械，再慢会盖过点击的即时反馈。 */
+  --motion-toggle: 200ms;
+  --ease-toggle: cubic-bezier(0.32, 0.72, 0, 1);
 }

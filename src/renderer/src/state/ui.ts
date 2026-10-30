@@ -100,9 +100,6 @@ interface UiState {
   /** 是否已同意「以图搜图会把图片上传到第三方站点」 */
   imageSearchConsent: boolean
   setImageSearchConsent: (value: boolean) => void
-  /** 搜图结果一次最多收下多少张（1–50） */
-  imageSearchCollectLimit: number
-  setImageSearchCollectLimit: (value: number) => void
   /**
    * 右下角收进"更多"的入口数量（0–5，依次是图层、颜色、对象、设置、缩放）。
    * 由 App 按画布可用宽度逐级推进；只要大于 0，底部工具条也收成纯图标。
@@ -144,7 +141,6 @@ export const useUiStore = create<UiState>((set, get) => {
       openBrowserOnLaunch: settings.openBrowserOnLaunch,
       freezeSmartCollection: settings.freezeSmartCollection,
       imageSearchConsent: settings.imageSearchConsent,
-      imageSearchCollectLimit: settings.imageSearchCollectLimit,
       assetCleanup: settings.assetCleanup,
       shortcuts: settings.shortcuts
     })
@@ -246,13 +242,6 @@ export const useUiStore = create<UiState>((set, get) => {
     setImageSearchConsent: (imageSearchConsent) => {
       set({ imageSearchConsent })
       savePatch({ imageSearchConsent })
-    },
-
-    imageSearchCollectLimit: DEFAULT_SETTINGS.imageSearchCollectLimit,
-    setImageSearchCollectLimit: (imageSearchCollectLimit) => {
-      const value = Math.min(50, Math.max(1, Math.round(imageSearchCollectLimit)))
-      set({ imageSearchCollectLimit: value })
-      savePatch({ imageSearchCollectLimit: value })
     },
 
     canvasControlsCollapsed: 0,

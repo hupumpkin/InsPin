@@ -32,10 +32,9 @@ import {
 import { sniffImageFormat } from './mime'
 import { registerCopyImagesIpc } from './copy-images'
 import { registerCutoutIpc } from './cutout'
-import { collectVisibleImages } from './image-search/collect'
 import { catalogFor } from './image-search/engines'
 import { ImageSearchService } from './image-search/service'
-import { parseImageSearchRequest, type ImageSearchCollectLayout } from '../shared/image-search'
+import { parseImageSearchRequest } from '../shared/image-search'
 import type { FetchLike } from './download'
 import { resizePathWithNativeImage, resizeWithNativeImage } from './image-resize'
 import { createThumbnailService } from './thumbnails-service'
@@ -87,6 +86,7 @@ import { loadSnapshots, saveSnapshots } from './snapshots-store'
 import {
   formatSmokeReport,
   logSmokeResult,
+  runCaptureSmokeChecks,
   runPanelSmokeChecks,
   runSmokeTest,
   runSnapshotSmokeChecks,
@@ -637,16 +637,53 @@ function syncPanelVisibility(): void {
 let liveCollectionPage: Electron.WebContents | null = null
 let liveCollectionClickPending = false
 
+/**
+ * 整页跳转/刷新后，网页里的采集浮层会随旧文档一起消失，继续挂着只会让用户
+ * "点了没反应"。单页应用的路由变化（did-navigate-in-page）不在这里处理，
+ * 那种情况下浮层还在。
+ */
+function onLivePageNavigated(): void {
+  endCaptureSession(true)
+}
+
 function stopLiveCollection(): void {
   const page = liveCollectionPage
   liveCollectionPage = null
-  if (page && !page.isDestroyed()) page.send(IpcChannel.browserSmartCollectMode, false)
+  if (!page || page.isDestroyed()) return
+  page.removeListener('did-navigate', onLivePageNavigated)
+  page.send(IpcChannel.browserSmartCollectMode, false)
 }
 
 function startLiveCollection(page: Electron.WebContents): void {
   stopLiveCollection()
+  if (page.isDestroyed()) return
   liveCollectionPage = page
+  page.on('did-navigate', onLivePageNavigated)
   page.send(IpcChannel.browserSmartCollectMode, true)
+  // 滚动模式让网页重新拿到焦点，用户才能继续滚动、快捷键也走网页侧的转发
+  page.focus()
+}
+
+/**
+ * 锁定模式会藏起网页视图。焦点必须交回画布，否则按键落不到任何窗口，
+ * 「切换锁定 / 滚动屏幕」就只剩单向可用。
+ */
+function focusCanvas(): void {
+  canvasView?.webContents.focus()
+}
+
+/**
+ * 等页面把注入的压暗/高亮真正画掉（两帧），再把页面截下来；
+ * 页面卡住或不允许执行脚本时最多等 80ms，不能因此卡住切换。
+ */
+function waitForPagePaint(page: Electron.WebContents): Promise<void> {
+  const painted = page
+    .executeJavaScript(
+      'new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true))))'
+    )
+    .then(() => undefined)
+    .catch(() => undefined)
+  return Promise.race([painted, new Promise<void>((resolve) => setTimeout(resolve, 80))])
 }
 
 /** 网页里回报的高亮框（网页视口 CSS 像素）；老版本 preload 不带它。 */
@@ -874,6 +911,9 @@ function applyPanel({ animate }: { animate: boolean }): void {
   const next = resolvePanelLayout({ windowWidth: width, prefs: panelPrefs })
   const openedChanged = next.open !== panelLayout.open
   panelLayout = next
+  // 面板收起后网页视图被藏起来，采集却还挂着，用户会觉得"点了没反应"。
+  // 收起即结束本次采集，界面那边同步清掉采集态。
+  if (!next.open && captureSession.active) endCaptureSession(true)
   if (animate && openedChanged) animatePanelSlide()
   else {
     // 瞬时对齐：正在滑的话先掐掉，否则缩放窗口会把滑到一半的动画拽回去
@@ -988,22 +1028,6 @@ function createWindow(): void {
   logger.info(LogEvent.windowCreated, { width: 1500, height: 940 })
 }
 
-/** 收下结果时的排版参数：界面给世界坐标，主进程只做范围兜底。 */
-function collectLayout(raw: unknown): ImageSearchCollectLayout {
-  const fallback: ImageSearchCollectLayout = { x: 120, y: 120, maxWidth: 1600 }
-  if (!raw || typeof raw !== 'object') return fallback
-  const data = raw as Record<string, unknown>
-  const number = (value: unknown, fallbackValue: number, min: number, max: number): number =>
-    typeof value === 'number' && Number.isFinite(value)
-      ? Math.min(max, Math.max(min, value))
-      : fallbackValue
-  return {
-    x: number(data.x, fallback.x, -1_000_000, 1_000_000),
-    y: number(data.y, fallback.y, -1_000_000, 1_000_000),
-    maxWidth: number(data.maxWidth, fallback.maxWidth, 320, 20_000)
-  }
-}
-
 /** 以图搜图的 IPC 通路。 */
 function registerImageSearchIpc(service: ImageSearchService, acceptConsent: () => Promise<unknown>): void {
   ipcMain.handle(IpcChannel.imageSearchCatalog, () => catalogFor())
@@ -1016,20 +1040,6 @@ function registerImageSearchIpc(service: ImageSearchService, acceptConsent: () =
     service.cancel()
   })
   ipcMain.handle(IpcChannel.imageSearchAcceptConsent, () => acceptConsent())
-  ipcMain.handle(IpcChannel.imageSearchCollect, async (_event, projectId: unknown, rawLayout: unknown) => {
-    if (typeof projectId !== 'string' || projectId.length === 0) {
-      return { ok: false, message: '先打开一个画布，再收下结果' }
-    }
-    const state = browserTabs?.getState()
-    const active = state?.tabs.find((tab) => tab.id === state.activeId)
-    if (!active?.searchEngine) return { ok: false, message: '这个标签不是搜图结果页' }
-    const webContents = browserTabs?.activeWebContents()
-    if (!webContents) return { ok: false, message: '先在侧栏打开结果页' }
-    return collectVisibleImages(canvasIpcDeps, projectId, webContents, {
-      limit: applicationSettings.imageSearchCollectLimit,
-      layout: collectLayout(rawLayout)
-    })
-  })
 }
 
 /** 浏览器标签的 IPC 通路（D3.1–D3.4）。 */
@@ -1172,8 +1182,12 @@ function registerCaptureIpc(): void {
         mode
       })
       // 冻结模式沿用原来的截图覆盖层；非冻结智能采集留着网页，可继续滚动。
-      if (freezePage) syncPanelVisibility()
-      else startLiveCollection(view.webContents)
+      if (freezePage) {
+        syncPanelVisibility()
+        focusCanvas()
+      } else {
+        startLiveCollection(view.webContents)
+      }
     } else {
       logger.error(LogEvent.captureDiscarded, { reason: result.message, box: bounds })
     }
@@ -1181,6 +1195,84 @@ function registerCaptureIpc(): void {
   })
 
   ipcMain.handle(IpcChannel.browserCaptureCancel, () => endCaptureSession())
+
+  /**
+   * 智能采集中切换「滚动屏幕 / 锁定屏幕」。
+   *
+   * 两个方向的代价差别很大：
+   *   - 切到滚动：不需要抓图，点选时本来就会现抓，翻标记、露出网页即可；
+   *   - 切到锁定：网页是露着的，可以截；但必须先等注入的压暗层画掉，
+   *     否则会被截进素材。候选结构在等待期间并行采样，不占关键路径。
+   * 切换只换 pending 这一帧，连续采集的排布锚点保持不动。
+   */
+  ipcMain.handle(
+    IpcChannel.browserCaptureSwitch,
+    async (_event, raw: unknown): Promise<CaptureStartResult> => {
+      const freezePage = raw === true
+      const view = browserTabs?.activeView()
+      if (!view || !panelLayout.open) return { ok: false, message: '先打开浏览器面板' }
+      if (!captureSession.active || captureSession.mode !== 'collect') {
+        return { ok: false, message: '采集已经结束' }
+      }
+      if (captureSession.hidesBrowser === freezePage) {
+        return { ok: false, message: '已经是这个模式了' }
+      }
+      if (liveCollectionClickPending) return { ok: false, message: '正在收下这张，稍等一下' }
+
+      // 滚动屏幕：轻量路径，不做任何抓图。
+      if (!freezePage) {
+        const live = captureSession.switchToLive()
+        if (!live) return { ok: false, message: '切换没有成功，请重新进入采集' }
+        browserTabs?.setPanelVisible(panelLayout.open || panelSlide > 0)
+        syncPanelVisibility()
+        startLiveCollection(view.webContents)
+        logger.info(LogEvent.captureStarted, { switched: true, freezePage: false })
+        return live
+      }
+
+      // 锁定屏幕：等遮罩画掉再截；候选采样与等待并行。
+      stopLiveCollection()
+      const bounds = browserContentBounds()
+      const pageUrl = view.webContents.getURL() || null
+      let image: Electron.NativeImage
+      let collection: CaptureCandidateCollection
+      try {
+        const [nextCollection, nextImage] = await Promise.all([
+          collectCaptureCandidates(view.webContents, bounds),
+          (async () => {
+            await waitForPagePaint(view.webContents)
+            return view.webContents.capturePage()
+          })()
+        ])
+        collection = nextCollection
+        image = nextImage
+      } catch (error) {
+        logger.error(LogEvent.browserLoadFailed, {
+          description: '切换采集模式时截取页面失败',
+          message: error instanceof Error ? error.message : String(error)
+        })
+        // 截图中途用户可能已经退出采集；只有会话还在时才把网页模式接回去。
+        if (captureSession.active) startLiveCollection(view.webContents)
+        syncPanelVisibility()
+        return { ok: false, message: '没能截到这个页面' }
+      }
+
+      const result = captureSession.switchMode(image, bounds, collection, pageUrl, true)
+      if (!result) {
+        if (captureSession.active) startLiveCollection(view.webContents)
+        syncPanelVisibility()
+        return { ok: false, message: '切换没有成功，请重新进入采集' }
+      }
+      syncPanelVisibility()
+      focusCanvas()
+      logger.info(LogEvent.captureStarted, {
+        switched: true,
+        freezePage: true,
+        candidateCount: collection.candidates.length
+      })
+      return result
+    }
+  )
 
   ipcMain.on(IpcChannel.browserSmartCollectClick, (event, point: unknown) => {
     collectLiveSmartCandidate(event.sender, point)
@@ -1453,6 +1545,15 @@ app.whenReady().then(async () => {
         canvasView?.webContents.send(IpcChannel.browserSmartCollectRequested)
         return true
       }
+      // 采集进行中才接管"切换锁定 / 滚动屏幕"，否则把组合还给网页
+      if (
+        matchesAccelerator(key, applicationSettings.shortcuts.toggleCollectMode) &&
+        captureSession.active &&
+        captureSession.mode === 'collect'
+      ) {
+        canvasView?.webContents.send(IpcChannel.browserToggleCollectModeRequested)
+        return true
+      }
       if (!matchesAccelerator(key, applicationSettings.shortcuts.newTab)) return false
       void browserTabs?.newTab()
       return true
@@ -1512,7 +1613,14 @@ app.whenReady().then(async () => {
   // 首帧就把面板几何摆好（窗口真实宽度此时才知道，不能沿用模块级的 1500 估值）
   applyPanel({ animate: false })
   // 状态一变就推给界面（标题、加载态、前进后退可用性…）
+  let lastActiveTabId = browserTabs.getState().activeId
   browserTabs.subscribe((state) => {
+    // 采集绑在当前网页上：切走标签后，页面里的高亮和点击拦截都留在旧标签，
+    // 新标签不会有任何反应。直接结束这次采集，界面同步清掉采集态。
+    if (state.activeId !== lastActiveTabId) {
+      lastActiveTabId = state.activeId
+      if (captureSession.active) endCaptureSession(true)
+    }
     canvasView?.webContents.send(IpcChannel.browserStateChanged, state)
   })
 
@@ -1701,6 +1809,16 @@ async function runSmoke(): Promise<void> {
       }))
     )
   }
+
+  // 采集生命周期：切标签 / 收面板 / 刷网页都必须结束采集，不能留下"点了没反应"
+  checks.push(
+    ...(await runCaptureSmokeChecks({
+      canvasView: canvas,
+      browserView: browser,
+      captureActive: () => captureSession.active,
+      settle: () => new Promise((resolve) => setTimeout(resolve, 350))
+    }))
+  )
 
   logSmokeResult(checks, logger)
   console.log(`\n${formatSmokeReport(checks)}\n`)

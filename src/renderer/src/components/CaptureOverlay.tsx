@@ -1,4 +1,11 @@
-import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent
+} from 'react'
+import { MagicStar } from 'reicon-react'
 import { MIN_CAPTURE_EDGE } from '../../../shared/capture'
 import {
   preferredCaptureCandidate,
@@ -9,6 +16,7 @@ import {
 import type { WindowRect } from '../../../shared/ipc'
 import { viewCenter } from '../canvas/view-center'
 import { useGraphStore, type CaptureScreen } from '../state/graph'
+import CollectModeToggle from './CollectModeToggle'
 
 interface DragSession {
   start: CapturePoint
@@ -32,10 +40,33 @@ export default function CaptureOverlay({ screen }: { screen: CaptureScreen }): R
 
   const [selection, setSelection] = useState<WindowRect | null>(null)
   const [snap, setSnap] = useState<CaptureCandidate | null>(null)
+  /** 冻结采集时，开关和退出要压在"采集入口按钮"原来的位置上。 */
+  const [controlsAnchor, setControlsAnchor] = useState<{ right: number; top: number } | null>(null)
   const dragRef = useRef<DragSession | null>(null)
   const selectionRef = useRef<WindowRect | null>(null)
   const pointerRef = useRef<CapturePoint | null>(null)
   const snapRef = useRef<CaptureCandidate | null>(null)
+
+  // 直接量浏览器栏里的采集入口按钮，保证冻结态的退出按钮和它完全重合，
+  // 开关在左侧；不同停靠方式、不同面板宽度都不用各算一套坐标。
+  useLayoutEffect(() => {
+    if (!collecting) {
+      setControlsAnchor(null)
+      return
+    }
+    const measure = (): void => {
+      const entry = document.querySelector('.browser__collect[aria-label="智能采集"]')
+      const rect = entry instanceof HTMLElement ? entry.getBoundingClientRect() : null
+      setControlsAnchor(
+        rect
+          ? { right: Math.max(0, window.innerWidth - rect.right), top: rect.top }
+          : { right: Math.max(24, window.innerWidth - (box.x + box.width - 24)), top: 24 }
+      )
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [collecting, screen, box.x, box.y, box.width, box.height])
 
   const clampToBox = (from: CapturePoint, to: CapturePoint): WindowRect => {
     const left = Math.max(box.x, Math.min(from.x, to.x))
@@ -172,11 +203,6 @@ export default function CaptureOverlay({ screen }: { screen: CaptureScreen }): R
         ? '单击图片智能采集 拖动光标手动采集'
         : '拖动框选要截取的区域 · Esc 取消'
 
-  const exitStyle = {
-    right: `max(24px, calc(100% - ${box.x + box.width - 24}px))`,
-    top: '24px'
-  }
-
   return (
     <div
       className="capture"
@@ -206,7 +232,9 @@ export default function CaptureOverlay({ screen }: { screen: CaptureScreen }): R
 
       <p
         className={collecting ? 'capture__tip capture__tip--collect' : 'capture__tip'}
-        style={collecting ? { left: box.x + box.width / 2 } : undefined}
+        // 采集指引落在网页内容区顶部，和不冻结模式里注入的提示在同一位置；
+        // 也避开右上角新加的开关与退出按钮。
+        style={collecting ? { left: box.x + box.width / 2, top: box.y + 24 } : undefined}
         aria-live="polite"
       >
         {tip}
@@ -221,22 +249,33 @@ export default function CaptureOverlay({ screen }: { screen: CaptureScreen }): R
         </p>
       )}
 
-      <div
-        className={collecting ? 'capture__actions capture__actions--collect' : 'capture__actions'}
-        style={collecting ? exitStyle : undefined}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <button type="button" className={collecting ? 'capture__btn capture__btn--exit' : 'capture__btn'} onClick={cancelCapture}>
-          {collecting ? (
-            <>
-              <span>退出采集</span>
-              <svg className="capture__exit-icon" viewBox="0 0 16 16" aria-hidden="true">
-                <path d="m4 4 8 8M12 4 4 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-              </svg>
-            </>
-          ) : '取消'}
-        </button>
-      </div>
+      {collecting ? (
+        controlsAnchor && (
+          <div
+            className="capture__collect-group"
+            style={{ right: controlsAnchor.right, top: controlsAnchor.top }}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <CollectModeToggle />
+            <button
+              type="button"
+              className="corner capture__exit"
+              aria-label="退出智能采集"
+              title="退出智能采集"
+              aria-pressed="true"
+              onClick={cancelCapture}
+            >
+              <MagicStar size={24} weight="Outline" />
+            </button>
+          </div>
+        )
+      ) : (
+        <div className="capture__actions" onPointerDown={(event) => event.stopPropagation()}>
+          <button type="button" className="capture__btn" onClick={cancelCapture}>
+            取消
+          </button>
+        </div>
+      )}
     </div>
   )
 }

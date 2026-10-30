@@ -833,13 +833,81 @@ body {
   /* .corner 默认是画布上的绝对定位；这里是浏览器顶部栏里的普通 flex 项。 */
   position: relative;
   flex: none;
-  margin-left: auto;
   color: var(--primary);
 }
 
 .browser__collect:disabled {
   cursor: default;
   opacity: 0.36;
+}
+
+/* 采集入口、退出与锁定开关成组靠右；开关在采集按钮左侧。 */
+.browser__collect-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  margin-left: auto;
+}
+
+/* 分段开关（设计规范 §2.1.5）：轨道 r8 / 内边距 2 / 按钮 h26 r6。
+   白色胶囊是独立滑块，用 transform 在两段之间滑动（不动布局）。 */
+.collect-mode {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--canvas);
+}
+
+.collect-mode__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(50% - 2px);
+  height: 26px;
+  border-radius: 6px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(23, 26, 38, 0.1);
+  transform: translateX(0);
+  transition: transform var(--motion-toggle) var(--ease-toggle);
+  will-change: transform;
+}
+
+.collect-mode[data-live='false'] .collect-mode__thumb {
+  transform: translateX(100%);
+}
+
+.collect-mode button {
+  position: relative;
+  z-index: 1;
+  flex: 1 1 0;
+  height: 26px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: 6px;
+  color: var(--help);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--motion-hover) var(--ease-hover);
+}
+
+.collect-mode button[aria-pressed='true'] {
+  color: var(--text);
+}
+
+.collect-mode button:active {
+  opacity: 0.72;
+}
+
+.collect-mode button:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--primary);
 }
 
 /* ── 分栏拖拽热区（D3.5）────────────────────────────────────────
@@ -2344,8 +2412,8 @@ body {
 .toast__dismiss {
   display: grid;
   place-items: center;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   flex: none;
   margin-left: 5px;
   padding: 0;
@@ -2356,9 +2424,9 @@ body {
 }
 
 .toast__dismiss > span {
-  width: 14px;
-  height: 14px;
-  opacity: 0.72;
+  width: 16px;
+  height: 16px;
+  opacity: 0.5;
   background: var(--toast-text);
   mask: url('../assets/toast/close.svg') center / contain no-repeat;
 }
@@ -3234,11 +3302,14 @@ body {
   color: var(--help);
 }
 
-/* 可改键的快捷键：点一下进入录制，再按组合。 */
+/* 可改键的快捷键：点一下进入录制，按住修饰键会实时亮起，再按主键落库。 */
 .settings__shortcut {
-  min-width: 96px;
-  height: 28px;
-  padding: 0 var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 132px;
+  min-height: 28px;
+  padding: 3px var(--space-3);
   border: 1px solid var(--line);
   border-radius: 6px;
   color: var(--text);
@@ -3265,6 +3336,71 @@ body {
   outline-offset: 2px;
 }
 
+/* 每个键单独一颗键帽，组合键一眼能拆开看。 */
+.settings__keycaps {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.settings__keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+}
+
+/* 录制中已经按住的修饰键：跟着按键实时亮起。 */
+.settings__keycap[data-held='true'] {
+  border-color: var(--control);
+  color: var(--text);
+  background: var(--canvas);
+}
+
+/* 还没按到主键时的占位键帽：虚线 + 呼吸，提示"还差一下"。 */
+.settings__keycap--pending {
+  border-style: dashed;
+  color: var(--help);
+  background: transparent;
+  animation: settings-keycap-pulse 1.1s var(--ease-hover) infinite;
+}
+
+.settings__record-hint {
+  color: var(--help);
+  font-size: 11px;
+}
+
+.settings__unset {
+  color: var(--help);
+}
+
+@keyframes settings-keycap-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings__keycap--pending {
+    animation: none;
+  }
+}
+
 .settings__shortcut-reset {
   margin-left: var(--space-2);
   padding: 0;
@@ -3280,14 +3416,59 @@ body {
   color: var(--text);
 }
 
-.settings__error {
-  margin: 0 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-left: 3px solid var(--control);
-  border-radius: 6px;
-  color: var(--text);
-  background: var(--canvas);
-  font-size: 12px;
+/* 快捷键页的提示条：冲突与录制报错共用，贴在顶栏下方吸顶。
+   用规范里的危险浅底，做成内缩的圆角卡片，不画左侧色线。 */
+.settings__notices {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  /* 铺满内容区给吸顶过渡带留白，卡片本身再按内容内边距缩进 */
+  margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-5)) var(--space-4);
+  padding: var(--space-5) var(--space-5) var(--space-2);
+  background: var(--surface);
+}
+
+.settings__notice {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid rgb(217 45 32 / 18%);
+  border-radius: 10px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* 录制报错：动作名和原因放在同一行，读起来是一句话。 */
+.settings__notice--error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.settings__notice strong {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.settings__notice ul {
+  margin: 4px 0 0;
+  padding-left: 16px;
+}
+
+.settings__notice li + li {
+  margin-top: 2px;
+}
+
+.settings__key-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--help);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 /* 素材清理：两个天数输入 + 当前占用。 */
@@ -3447,11 +3628,6 @@ body {
   gap: var(--space-2);
 }
 
-.capture__actions--collect {
-  z-index: 1;
-  bottom: auto;
-}
-
 .capture__btn {
   height: var(--size-corner);
   padding: 0 var(--space-5);
@@ -3463,32 +3639,18 @@ body {
   cursor: pointer;
 }
 
-.capture__btn--exit {
-  display: inline-flex;
+/* 冻结采集：开关 + 退出压在浏览器栏采集入口的原坐标上（右侧对齐、顶边对齐），
+   切到不冻结后界面里同一位置会出现同一组控件，看起来不会跳。 */
+.capture__collect-group {
+  position: absolute;
+  z-index: 2;
+  display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 5px;
-  height: 36px;
-  padding: 6px 8px 6px 12px;
-  border-radius: 12px;
-  background: var(--library-accent);
-  font-weight: 500;
-  line-height: 20px;
+  gap: var(--space-2);
 }
 
-.capture__btn--exit:hover {
-  background: var(--library-accent-hover);
-}
-
-.capture__exit-icon {
-  display: block;
-  width: 16px;
-  height: 16px;
-}
-
-.capture__btn--ghost {
-  color: var(--text);
-  background: var(--surface);
+.capture__collect-group .corner {
+  position: relative;
 }
 
 /* ── 素材上的"这不是原图"小标签（D3.13 低清副本 / D3.16 截图副本）──

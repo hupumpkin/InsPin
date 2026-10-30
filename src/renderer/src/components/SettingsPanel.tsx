@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent
@@ -13,10 +14,14 @@ import {
   acceleratorFromMouseEvent,
   defaultShortcut,
   formatAccelerator,
+  formatAcceleratorParts,
   isDefaultShortcut,
+  modifierLabels,
   shortcutConflict,
+  shortcutConflicts,
   supportsMouseBinding,
   SHORTCUT_DEFINITIONS,
+  type HeldModifiers,
   type ShortcutAction
 } from '../../../shared/shortcuts'
 import { CANVAS_COLORS, useUiStore } from '../state/ui'
@@ -174,10 +179,6 @@ function General(): React.JSX.Element {
   const setFreezeSmartCollection = useUiStore((state) => state.setFreezeSmartCollection)
   const imageSearchConsent = useUiStore((state) => state.imageSearchConsent)
   const setImageSearchConsent = useUiStore((state) => state.setImageSearchConsent)
-  const imageSearchCollectLimit = useUiStore((state) => state.imageSearchCollectLimit)
-  const setImageSearchCollectLimit = useUiStore((state) => state.setImageSearchCollectLimit)
-  const [limitDraft, setLimitDraft] = useState(String(imageSearchCollectLimit))
-  useEffect(() => setLimitDraft(String(imageSearchCollectLimit)), [imageSearchCollectLimit])
   const resetSettings = useUiStore((state) => state.resetSettings)
   const [confirmReset, setConfirmReset] = useState(false)
 
@@ -248,36 +249,6 @@ function General(): React.JSX.Element {
             onChange={(event) => setImageSearchConsent(event.target.checked)}
           />
         </label>
-        <div className="settings__field">
-          <span className="settings__field-text">
-            <strong className="settings__field-label">收下结果的数量上限</strong>
-            <span className="settings__hint">最多 50 张；只收当前视野里能看到的大图。</span>
-          </span>
-          <label className="settings__number-field">
-            最多
-            <input
-              type="number"
-              className="settings__number"
-              min={1}
-              max={50}
-              value={limitDraft}
-              onChange={(event) => setLimitDraft(event.target.value)}
-              onBlur={() => {
-                const parsed = Number(limitDraft)
-                const limit = Math.min(
-                  50,
-                  Math.max(1, Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : imageSearchCollectLimit)
-                )
-                setLimitDraft(String(limit))
-                setImageSearchCollectLimit(limit)
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') event.currentTarget.blur()
-              }}
-            />
-            张
-          </label>
-        </div>
       </div>
 
       <div className="settings__group">
@@ -310,8 +281,8 @@ function General(): React.JSX.Element {
         <h3 className="settings__subtitle">智能采集</h3>
         <label className="settings__field settings__field--toggle">
           <span className="settings__field-text">
-            <strong className="settings__field-label">采集时冻结网页</strong>
-            <span className="settings__hint">默认开启，采集期间网页保持静止，最稳定。</span>
+            <strong className="settings__field-label">采集时锁定屏幕</strong>
+            <span className="settings__hint">默认开启，采集期间屏幕保持锁定，适合逐张收集。</span>
           </span>
           <input
             type="checkbox"
@@ -321,7 +292,7 @@ function General(): React.JSX.Element {
         </label>
         {!freezeSmartCollection && (
           <p className="settings__warning" role="note">
-            <strong>实验功能</strong>：边滚动边采集可能引起程序报错，建议先用冻结模式。
+            屏幕保持可滚动，可边滚动边采集；切换标签页、收起面板或刷新网页会结束本次采集。
           </p>
         )}
       </div>
@@ -420,11 +391,50 @@ function About(): React.JSX.Element {
   )
 }
 
+const NO_MODIFIERS: HeldModifiers = { ctrl: false, alt: false, shift: false, meta: false }
+
+/** 空闲时显示已存的组合；录制时显示按住中的修饰键和"按键"占位。 */
+function ShortcutKeycaps({
+  accelerator,
+  held
+}: {
+  accelerator: string | null
+  held: HeldModifiers | null
+}): React.JSX.Element {
+  if (held) {
+    return (
+      <span className="settings__keycaps">
+        {modifierLabels(held).map((label) => (
+          <kbd key={label} className="settings__keycap" data-held="true">
+            {label}
+          </kbd>
+        ))}
+        <kbd className="settings__keycap settings__keycap--pending">按键</kbd>
+        <span className="settings__record-hint">或中键</span>
+      </span>
+    )
+  }
+  const parts = formatAcceleratorParts(accelerator)
+  if (parts.length === 0) return <span className="settings__unset">未设置</span>
+  return (
+    <span className="settings__keycaps">
+      {parts.map((part, index) => (
+        <kbd key={`${part}-${index}`} className="settings__keycap">
+          {part}
+        </kbd>
+      ))}
+    </span>
+  )
+}
+
 function Shortcuts(): React.JSX.Element {
   const shortcuts = useUiStore((state) => state.shortcuts)
   const setShortcut = useUiStore((state) => state.setShortcut)
   const [recording, setRecording] = useState<ShortcutAction | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [held, setHeld] = useState<HeldModifiers>(NO_MODIFIERS)
+  // pointerdown 与 mousedown 会为同一次中键各发一次，用这个标记只处理第一下。
+  const pressHandled = useRef(false)
 
   /** 录到一个组合后统一做冲突检查与落库。 */
   function commit(accelerator: string): void {
@@ -436,27 +446,62 @@ function Shortcuts(): React.JSX.Element {
     setShortcut(recording!, accelerator)
     setRecording(null)
     setError(null)
+    setHeld(NO_MODIFIERS)
+  }
+
+  function startRecording(action: ShortcutAction): void {
+    setRecording(action)
+    setError(null)
+    setHeld(NO_MODIFIERS)
+    pressHandled.current = false
+  }
+
+  function cancelRecording(): void {
+    setRecording(null)
+    setError(null)
+    setHeld(NO_MODIFIERS)
+    pressHandled.current = false
   }
 
   useEffect(() => {
     if (!recording) return
+    pressHandled.current = false
+
+    function syncHeld(event: KeyboardEvent): void {
+      setHeld({
+        ctrl: event.ctrlKey,
+        alt: event.altKey,
+        shift: event.shiftKey,
+        meta: event.metaKey
+      })
+    }
+
     function onKeyDown(event: KeyboardEvent): void {
       // 录制时把按键全收走：不让它触发画布工具，也不让它冒泡到别的快捷键处理
       event.preventDefault()
       event.stopPropagation()
       if (event.key === 'Escape') {
-        setRecording(null)
-        setError(null)
+        cancelRecording()
         return
       }
+      // 长按只取第一下，系统连发不能重复录入
+      if (event.repeat) return
+      // 只按修饰键时先把它们实时亮出来，按到主键才落库
+      syncHeld(event)
       const accelerator = acceleratorFromEvent(event)
       if (accelerator) commit(accelerator)
     }
-    function onMouseDown(event: MouseEvent): void {
-      // 点击录制按钮本身是左键，放过去；中键按下才算一次录制
-      if (event.button !== 1) return
+
+    function onKeyUp(event: KeyboardEvent): void {
+      syncHeld(event)
+    }
+
+    /** 中键：pointerdown / mousedown 只处理一次，并把默认行为挡掉。 */
+    function onMiddleDown(event: MouseEvent): void {
+      if (event.button !== 1 || pressHandled.current) return
       event.preventDefault()
       event.stopPropagation()
+      pressHandled.current = true
       if (!supportsMouseBinding(recording!)) {
         setError('这个动作只支持键盘快捷键')
         return
@@ -464,11 +509,40 @@ function Shortcuts(): React.JSX.Element {
       const accelerator = acceleratorFromMouseEvent(event)
       if (accelerator) commit(accelerator)
     }
+
+    function onMiddleUp(event: MouseEvent): void {
+      if (event.button === 1) pressHandled.current = false
+    }
+
+    function onAuxClick(event: MouseEvent): void {
+      if (event.button === 1) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+
+    function onBlur(): void {
+      // 切走窗口时手已经松开，别把修饰键一直亮着
+      setHeld(NO_MODIFIERS)
+    }
+
     window.addEventListener('keydown', onKeyDown, true)
-    window.addEventListener('mousedown', onMouseDown, true)
+    window.addEventListener('keyup', onKeyUp, true)
+    window.addEventListener('pointerdown', onMiddleDown, true)
+    window.addEventListener('mousedown', onMiddleDown, true)
+    window.addEventListener('pointerup', onMiddleUp, true)
+    window.addEventListener('mouseup', onMiddleUp, true)
+    window.addEventListener('auxclick', onAuxClick, true)
+    window.addEventListener('blur', onBlur)
     return () => {
       window.removeEventListener('keydown', onKeyDown, true)
-      window.removeEventListener('mousedown', onMouseDown, true)
+      window.removeEventListener('keyup', onKeyUp, true)
+      window.removeEventListener('pointerdown', onMiddleDown, true)
+      window.removeEventListener('mousedown', onMiddleDown, true)
+      window.removeEventListener('pointerup', onMiddleUp, true)
+      window.removeEventListener('mouseup', onMiddleUp, true)
+      window.removeEventListener('auxclick', onAuxClick, true)
+      window.removeEventListener('blur', onBlur)
     }
   }, [recording, shortcuts, setShortcut])
 
@@ -482,12 +556,42 @@ function Shortcuts(): React.JSX.Element {
     []
   )
 
+  const conflicts = shortcutConflicts(shortcuts)
+  const recordingLabel = recording
+    ? (SHORTCUT_DEFINITIONS.find((definition) => definition.action === recording)?.label ?? '')
+    : ''
+
   return (
     <div className="settings__section">
+      {(error || conflicts.length > 0) && (
+        <div className="settings__notices">
+          {error && (
+            <div className="settings__notice settings__notice--error" role="alert">
+              {recordingLabel && <strong>{recordingLabel}</strong>}
+              <span>{error}</span>
+            </div>
+          )}
+          {conflicts.length > 0 && (
+            <div className="settings__notice" role="alert">
+              <strong>检测到快捷键冲突</strong>
+              <ul>
+                {conflicts.map((conflict) => (
+                  <li key={`${conflict.action}-${conflict.source}-${conflict.otherLabel}`}>
+                    {conflict.source === 'system'
+                      ? `「${conflict.label}」与系统快捷键「${conflict.otherLabel}」冲突`
+                      : `「${conflict.label}」和「${conflict.otherLabel}」重复`}
+                    （{formatAccelerator(conflict.accelerator)}）
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
       <p className="settings__lead">
-        点一下右边的键位，再按下新的组合就能改；也可以按鼠标中键（可带 ⌥⌃⇧⌘）。输入框里打字时这些快捷键不会抢键。
+        点一下右边的键位进入录制，按住 ⌘ / ⌥ / ⇧ / ⌃ 会实时亮起，再按一个主键完成；也可以按鼠标中键（可带修饰键）。Esc 取消。
+        输入框里打字时这些快捷键不会抢键。
       </p>
-      {error && <p className="settings__error">{error}</p>}
       {groups.map((group) => (
         <div key={group.name} className="settings__group">
           <h3 className="settings__subtitle">{group.name}</h3>
@@ -496,19 +600,27 @@ function Shortcuts(): React.JSX.Element {
               const active = recording === definition.action
               return (
                 <div key={definition.action} className="settings__key">
-                  <dt>{definition.label}</dt>
+                  <dt>
+                    {definition.label}
+                    {definition.hint && <span className="settings__key-hint">{definition.hint}</span>}
+                  </dt>
                   <dd>
                     <button
                       type="button"
                       className="settings__shortcut"
                       data-recording={active ? 'true' : undefined}
                       aria-pressed={active}
-                      onClick={() => {
-                        setRecording(definition.action)
-                        setError(null)
-                      }}
+                      aria-label={
+                        active
+                          ? `${definition.label}：正在录制，请按新的快捷键或鼠标中键`
+                          : `${definition.label}：${formatAccelerator(shortcuts[definition.action])}`
+                      }
+                      onClick={() => startRecording(definition.action)}
                     >
-                      {active ? '请按新的快捷键或中键…' : formatAccelerator(shortcuts[definition.action])}
+                      <ShortcutKeycaps
+                        accelerator={active ? null : shortcuts[definition.action]}
+                        held={active ? held : null}
+                      />
                     </button>
                     {!isDefaultShortcut(definition.action, shortcuts[definition.action]) && (
                       <button

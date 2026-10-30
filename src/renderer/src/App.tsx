@@ -218,6 +218,16 @@ export default function App(): React.JSX.Element {
         void beginSmartCollect()
         return true
       }
+      if (match(shortcuts.toggleCollectMode)) {
+        const graph = useGraphStore.getState()
+        const capture = graph.capture
+        if (capture?.mode === 'collect') {
+          // live 与冻结互为反面：切换后的目标冻结值就是当前是否 live
+          void graph.setCaptureFreeze(capture.live === true)
+          return true
+        }
+        return false
+      }
       if (match(shortcuts.newTab)) {
         void useBrowserStore.getState().newTab()
         return true
@@ -267,6 +277,19 @@ export default function App(): React.JSX.Element {
   useEffect(() => {
     const unsubscribe = browserBridge()?.onSmartCollectRequested(() => {
       void beginSmartCollect()
+    })
+    return () => unsubscribe?.()
+  }, [])
+
+  // 采集中按「切换锁定 / 滚动屏幕」：网页聚焦时由主进程转发过来
+  useEffect(() => {
+    const unsubscribe = browserBridge()?.onToggleCollectModeRequested(() => {
+      const graph = useGraphStore.getState()
+      const capture = graph.capture
+      if (capture?.mode === 'collect') {
+        // live 与冻结互为反面：切换后的目标冻结值就是当前是否 live
+        void graph.setCaptureFreeze(capture.live === true)
+      }
     })
     return () => unsubscribe?.()
   }, [])

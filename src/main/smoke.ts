@@ -201,6 +201,247 @@ export async function runPanelSmokeChecks(ctx: PanelSmokeContext): Promise<Smoke
   return checks
 }
 
+export interface CaptureSmokeContext {
+  canvasView: WebContentsView
+  browserView: WebContentsView
+  /** 主进程里是否还有一次采集会话没结束。 */
+  captureActive: () => boolean
+  /** 等面板滑动与界面状态落定。 */
+  settle: () => Promise<void>
+}
+
+/**
+ * 采集生命周期的自检。
+ *
+ * 非冻结采集把"压暗、高亮、点击拦截"注入到当前网页里；一旦切走标签、收起面板
+ * 或刷新网页，这些注入会留在旧页面/旧文档，用户在新页面上只会得到"点了没反应"。
+ * 这三条退出路径都必须把采集会话收干净，界面上的采集态也要跟着清掉。
+ */
+export async function runCaptureSmokeChecks(ctx: CaptureSmokeContext): Promise<SmokeCheck[]> {
+  const checks: SmokeCheck[] = []
+  const add = (name: string, ok: boolean, detail?: unknown): void => {
+    checks.push({ name, ok, detail })
+  }
+
+  const bridge = async (script: string): Promise<unknown> =>
+    evaluate(
+      ctx.canvasView,
+      `(async () => {
+        const api = window.insPin
+        if (!api) return { error: 'bridge-missing' }
+        ${script}
+      })()`
+    )
+
+  const waitForCapture = async (want: boolean, timeoutMs = 4000): Promise<boolean> => {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if (ctx.captureActive() === want) return true
+      await new Promise((resolve) => setTimeout(resolve, 80))
+    }
+    return ctx.captureActive() === want
+  }
+
+  const collectLabel = async (): Promise<string | null> =>
+    (await evaluate(
+      ctx.canvasView,
+      `document.querySelector('.browser__collect')?.getAttribute('aria-label') ?? null`
+    )) as string | null
+
+  const waitForLabel = async (label: string, timeoutMs = 4000): Promise<boolean> => {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      if ((await collectLabel()) === label) return true
+      await new Promise((resolve) => setTimeout(resolve, 80))
+    }
+    return (await collectLabel()) === label
+  }
+
+  /**
+   * 走界面上的采集按钮，而不是绕过界面直接调 IPC——这样同时验证
+   * 主进程会话和界面上的采集态。只有不冻结模式按钮才会变成「退出智能采集」。
+   */
+  const startCollect = async (): Promise<{ clicked: boolean; active: boolean; liveLabel: boolean }> => {
+    const clicked =
+      (await evaluate(
+        ctx.canvasView,
+        `(() => {
+          const button = document.querySelector('.browser__collect[aria-label="智能采集"]')
+          if (!(button instanceof HTMLButtonElement) || button.disabled) return false
+          button.click()
+          return true
+        })()`
+      )) === true
+    const active = clicked && (await waitForCapture(true))
+    const liveLabel = active && (await waitForLabel('退出智能采集'))
+    return { clicked, active, liveLabel }
+  }
+
+  const clickCollectMode = async (label: string): Promise<boolean> =>
+    (await evaluate(
+      ctx.canvasView,
+      `(() => {
+        const button = [...document.querySelectorAll('.collect-mode button')]
+          .find((item) => item.textContent?.trim() === ${JSON.stringify(label)})
+        if (!(button instanceof HTMLButtonElement) || button.disabled) return false
+        button.click()
+        return true
+      })()`
+    )) === true
+
+  const waitForSelector = async (
+    selector: string,
+    present: boolean,
+    timeoutMs = 4000
+  ): Promise<boolean> => {
+    const deadline = Date.now() + timeoutMs
+    while (Date.now() < deadline) {
+      const found =
+        (await evaluate(
+          ctx.canvasView,
+          `Boolean(document.querySelector(${JSON.stringify(selector)}))`
+        )) === true
+      if (found === present) return true
+      await new Promise((resolve) => setTimeout(resolve, 80))
+    }
+    return false
+  }
+
+  /** 冻结态：覆盖层里的退出按钮必须和浏览器栏里的采集入口完全重合。 */
+  const collectControlAlignment = async (): Promise<{
+    entry: { left: number; top: number; right: number; bottom: number } | null
+    exit: { left: number; top: number; right: number; bottom: number } | null
+  } | null> =>
+    (await evaluate(
+      ctx.canvasView,
+      `(() => {
+        const rect = (element) => {
+          if (!element) return null
+          const value = element.getBoundingClientRect()
+          return { left: value.left, top: value.top, right: value.right, bottom: value.bottom }
+        }
+        return {
+          entry: rect(document.querySelector('.browser__collect[aria-label="智能采集"]')),
+          exit: rect(document.querySelector('.capture__collect-group .corner'))
+        }
+      })()`
+    )) as {
+      entry: { left: number; top: number; right: number; bottom: number } | null
+      exit: { left: number; top: number; right: number; bottom: number } | null
+    } | null
+
+  // 不冻结模式才会挂到具体网页上；SMOKE 下改设置只影响内存，不写回用户配置。
+  // 采集检查从最常见的左停靠面板开始，网页与 chrome 在同一侧。
+  await bridge(`await api.settings.update({ freezeSmartCollection: false }); return true`)
+  await bridge(`await api.browser.setPanel({ dock: 'left', open: true }); return true`)
+  await ctx.settle()
+
+  // 1) 采集内切换到锁定屏幕：开关生效，退出按钮落在采集入口的原坐标上
+  const startedForToggle = await startCollect()
+  const clickedFrozen = await clickCollectMode('锁定屏幕')
+  const frozenMounted = await waitForSelector('.capture__collect-group .corner', true)
+  const alignment = await collectControlAlignment()
+  const aligned = Boolean(
+    alignment?.entry &&
+      alignment.exit &&
+      Math.abs(alignment.entry.left - alignment.exit.left) < 0.5 &&
+      Math.abs(alignment.entry.top - alignment.exit.top) < 0.5 &&
+      Math.abs(alignment.entry.right - alignment.exit.right) < 0.5 &&
+      Math.abs(alignment.entry.bottom - alignment.exit.bottom) < 0.5
+  )
+  const frozenSelected =
+    (await evaluate(
+      ctx.canvasView,
+      `document.querySelector('.collect-mode button[aria-pressed="true"]')?.textContent?.trim() ?? null`
+    )) === '锁定屏幕'
+  add(
+    'capture-mode-switch-freezes',
+    Boolean(
+      startedForToggle.clicked &&
+        startedForToggle.active &&
+        startedForToggle.liveLabel &&
+        clickedFrozen &&
+        frozenMounted &&
+        frozenSelected &&
+        aligned
+    ),
+    { startedForToggle, clickedFrozen, frozenMounted, frozenSelected, alignment }
+  )
+
+  // 2) 切回滚动屏幕：覆盖层收起，采集继续
+  const clickedLive = await clickCollectMode('滚动屏幕')
+  const overlayGone = await waitForSelector('.capture__collect-group', false)
+  const liveAgain = await waitForLabel('退出智能采集')
+  add(
+    'capture-mode-switch-unfreezes',
+    Boolean(clickedLive && overlayGone && liveAgain && ctx.captureActive()),
+    { clickedLive, overlayGone, liveAgain }
+  )
+
+  // 3) 收起浏览器面板 → 结束采集
+  await bridge(`await api.browser.setPanel({ open: false }); return true`)
+  await ctx.settle()
+  const activeAfterClose = await waitForCapture(false)
+  const labelAfterClose = await waitForLabel('智能采集')
+  add(
+    'capture-ends-when-panel-closes',
+    Boolean(activeAfterClose && labelAfterClose),
+    { activeAfterClose, labelAfterClose }
+  )
+
+  // 4) 切到另一个标签 → 结束采集
+  await bridge(`await api.browser.setPanel({ open: true }); return true`)
+  await ctx.settle()
+  const startedByTab = await startCollect()
+  const tabSwitch = (await bridge(
+    `const before = await api.browser.getState()
+     const next = await api.browser.newTab()
+     const closed = await api.browser.closeTab(next.activeId)
+     return { before: before.activeId, during: next.activeId, after: closed.activeId }`
+  )) as { before?: string | null; during?: string | null; after?: string | null } | null
+  const activeAfterTabSwitch = await waitForCapture(false)
+  const labelAfterTabSwitch = await waitForLabel('智能采集')
+  add(
+    'capture-ends-when-tab-switches',
+    Boolean(
+      startedByTab.clicked &&
+        startedByTab.active &&
+        startedByTab.liveLabel &&
+        tabSwitch?.before === tabSwitch?.after &&
+        activeAfterTabSwitch &&
+        labelAfterTabSwitch
+    ),
+    { startedByTab, tabSwitch, activeAfterTabSwitch, labelAfterTabSwitch }
+  )
+  await ctx.settle()
+
+  // 5) 网页刷新 → 结束采集
+  const startedByReload = await startCollect()
+  const reloaded = await bridge(
+    `const state = await api.browser.getState()
+     if (!state.activeId) return false
+     await api.browser.command(state.activeId, 'reload')
+     return true`
+  )
+  const activeAfterReload = await waitForCapture(false)
+  const labelAfterReload = await waitForLabel('智能采集')
+  add(
+    'capture-ends-when-page-reloads',
+    Boolean(
+      startedByReload.clicked &&
+        startedByReload.active &&
+        startedByReload.liveLabel &&
+        reloaded === true &&
+        activeAfterReload &&
+        labelAfterReload
+    ),
+    { startedByReload, reloaded, activeAfterReload, labelAfterReload }
+  )
+
+  await waitForIdle(ctx.browserView)
+  return checks
+}
+
 /**
  * 参考快照的自检（D5）。
  *

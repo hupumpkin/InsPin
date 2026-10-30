@@ -19,7 +19,6 @@ import type {
 import type { AppSettings } from '../shared/settings'
 import type {
   ImageSearchCatalogItem,
-  ImageSearchCollectLayout,
   ImageSearchProgress,
   ImageSearchStartRequest,
   ImageSearchStartResult
@@ -275,6 +274,10 @@ contextBridge.exposeInMainWorld('insPin', {
     captureCancel(): Promise<void> {
       return ipcRenderer.invoke(IpcChannel.browserCaptureCancel)
     },
+    /** 智能采集中切换冻结 / 不冻结，保持连续排布锚点。 */
+    captureSwitch(freeze: boolean): Promise<CaptureStartResult> {
+      return ipcRenderer.invoke(IpcChannel.browserCaptureSwitch, freeze)
+    },
     onSmartCollectPicked(listener: (pick: SmartCollectionPick) => void): () => void {
       const handler = (_event: unknown, pick: SmartCollectionPick): void => listener(pick)
       ipcRenderer.on(IpcChannel.browserSmartCollectPicked, handler)
@@ -297,6 +300,13 @@ contextBridge.exposeInMainWorld('insPin', {
       const handler = (): void => listener()
       ipcRenderer.on(IpcChannel.browserSmartCollectRequested, handler)
       return () => ipcRenderer.removeListener(IpcChannel.browserSmartCollectRequested, handler)
+    },
+    /** 网页有焦点时按下「切换锁定 / 滚动屏幕」快捷键，主进程转给画布处理。 */
+    onToggleCollectModeRequested(listener: () => void): () => void {
+      const handler = (): void => listener()
+      ipcRenderer.on(IpcChannel.browserToggleCollectModeRequested, handler)
+      return () =>
+        ipcRenderer.removeListener(IpcChannel.browserToggleCollectModeRequested, handler)
     },
     /** 网页里按 Esc 退出了采集，界面要把采集状态清掉。 */
     onCaptureEnded(listener: () => void): () => void {
@@ -325,10 +335,6 @@ contextBridge.exposeInMainWorld('insPin', {
     /** 用户确认「图片会上传到第三方」后调用一次 */
     acceptConsent(): Promise<AppSettings> {
       return ipcRenderer.invoke(IpcChannel.imageSearchAcceptConsent)
-    },
-    /** 把结果页当前可见的大图批量收进画布 */
-    collect(projectId: string, layout?: ImageSearchCollectLayout): Promise<ImportResult> {
-      return ipcRenderer.invoke(IpcChannel.imageSearchCollect, projectId, layout)
     }
   },
   /** 设置：程序坞右键菜单 / 应用菜单点进来时，主进程让界面把设置面板打开。 */

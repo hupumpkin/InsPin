@@ -38,13 +38,6 @@ export type ImageSearchFailureReason =
   | 'consent-required'
   | 'unknown'
 
-/** 「收下当前可见结果」往画布里排布的起点与行宽（世界坐标）。 */
-export interface ImageSearchCollectLayout {
-  x: number
-  y: number
-  maxWidth: number
-}
-
 export interface ImageSearchStartRequest {
   engineId: ImageSearchEngineId
   /** 只给素材文件名，主进程自己解析磁盘路径 */

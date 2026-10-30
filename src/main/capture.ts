@@ -24,6 +24,8 @@ export interface PendingCapture {
   pageUrl: string | null
   /** 是否要让原生网页让位给截图覆盖层。 */
   freezePage: boolean
+  /** 这次会话是普通截图还是智能采集；只有智能采集允许中途切换冻结状态。 */
+  mode: CaptureMode
 }
 
 export class CaptureSession {
@@ -49,7 +51,8 @@ export class CaptureSession {
       originalUrls: collection.originalUrls,
       sourceUrls: collection.sourceUrls,
       pageUrl,
-      freezePage
+      freezePage,
+      mode
     }
     this.collectionAnchor = null
     this.collectionNextX = null
@@ -78,6 +81,67 @@ export class CaptureSession {
     return this.pending?.freezePage === true
   }
 
+  get mode(): CaptureMode | null {
+    return this.pending?.mode ?? null
+  }
+
+  /**
+   * 采集中途切换冻结 / 不冻结。用当前这一帧重建 pending，但**不重置**
+   * 连续采集的排布锚点——切换模式不该让后续图片另起一行。
+   */
+  switchMode(
+    image: NativeImage,
+    box: Rectangle,
+    collection: CaptureCandidateCollection,
+    pageUrl: string | null,
+    freezePage: boolean
+  ): CaptureStartResult | null {
+    if (!this.pending || this.pending.mode !== 'collect') return null
+    if (image.isEmpty() || box.width < 2 || box.height < 2) return null
+    this.pending = {
+      image,
+      box,
+      originalUrls: collection.originalUrls,
+      sourceUrls: collection.sourceUrls,
+      pageUrl,
+      freezePage,
+      mode: 'collect'
+    }
+    const size = image.getSize()
+    return {
+      ok: true,
+      dataUrl: image.toDataURL(),
+      box: { x: box.x, y: box.y, width: box.width, height: box.height },
+      candidates: collection.candidates,
+      mode: 'collect',
+      ...(freezePage ? {} : { live: true })
+    }
+  }
+
+  /**
+   * 切换到滚动屏幕（不冻结）。这一步**不用重新抓图**：滚动模式每次点击都会
+   * 现抓当前帧（`refresh`），切过去只需要把标记翻过来、让网页露出来，
+   * 因此可以做到几乎没有延迟。保留原 pending，供切回锁定时复用排布锚点。
+   */
+  switchToLive(): CaptureStartResult | null {
+    const current = this.pending
+    if (!current || current.mode !== 'collect') return null
+    this.pending = { ...current, freezePage: false }
+    return {
+      ok: true,
+      dataUrl: '',
+      box: {
+        x: current.box.x,
+        y: current.box.y,
+        width: current.box.width,
+        height: current.box.height
+      },
+      candidates: [],
+      mode: 'collect',
+      live: true
+    }
+  }
+
   /** 网页滚动后，非冻结采集按当前一帧更新候选与截图，但连续排布锚点不能重置。 */
   refresh(
     image: NativeImage,
@@ -85,14 +149,16 @@ export class CaptureSession {
     collection: CaptureCandidateCollection,
     pageUrl: string | null
   ): boolean {
-    if (image.isEmpty() || box.width < 2 || box.height < 2 || !this.pending) return false
+    const current = this.pending
+    if (!current || image.isEmpty() || box.width < 2 || box.height < 2) return false
     this.pending = {
       image,
       box,
       originalUrls: collection.originalUrls,
       sourceUrls: collection.sourceUrls,
       pageUrl,
-      freezePage: false
+      freezePage: false,
+      mode: current.mode
     }
     return true
   }

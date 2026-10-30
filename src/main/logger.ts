@@ -53,8 +53,6 @@ export const LogEvent = {
   webFetchFailed: 'asset.web.fetch.failed',
   /** 从网页拖来的图：定下用哪个地址、实际拿到多大（D3.11"明显大于 480px"的证据） */
   webImportResolved: 'asset.web.resolved',
-  /** 以图搜图：收下当前可见结果的分段耗时（扫描 / 下载 / 入库） */
-  imageSearchCollected: 'image.search.collected',
   /** 区域截图：开始框选（抓到了多大一张） */
   captureStarted: 'browser.capture.started',
   /** 区域截图：用户放弃了这一次 */

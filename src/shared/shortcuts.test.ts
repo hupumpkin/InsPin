@@ -3,14 +3,18 @@ import {
   acceleratorFromEvent,
   acceleratorFromMouseEvent,
   DEFAULT_SHORTCUTS,
+  defaultShortcut,
   formatAccelerator,
+  formatAcceleratorParts,
   isDefaultShortcut,
   isMouseAccelerator,
   matchesAccelerator,
   normalizeShortcutBindings,
   parseAccelerator,
+  reservedShortcutConflict,
   sameAccelerator,
   shortcutConflict,
+  shortcutConflicts,
   supportsMouseBinding,
   type KeyEventLike,
   type MouseEventLike
@@ -156,6 +160,33 @@ describe('normalizeShortcutBindings', () => {
   })
 })
 
+describe('Windows 快捷键归一化', () => {
+  it('默认绑定把 Meta 换成 Ctrl', () => {
+    const result = normalizeShortcutBindings(null, 'win32')
+    expect(result.commandPalette).toBe('Ctrl+K')
+    expect(result.undo).toBe('Ctrl+Z')
+    expect(result.copyToApps).toBe('Shift+Ctrl+C')
+    expect(Object.values(result).some((value) => value?.includes('Meta'))).toBe(false)
+  })
+
+  it('用户自己存的 Meta 组合也会换', () => {
+    expect(normalizeShortcutBindings({ toolHand: 'Meta+Alt+J' }, 'win32').toolHand).toBe('Ctrl+Alt+J')
+  })
+
+  it('显示成 Windows 文案', () => {
+    expect(formatAccelerator('Ctrl+K', 'win32')).toBe('Ctrl+K')
+    expect(formatAccelerator('Shift+Ctrl+C', 'win32')).toBe('Ctrl+Shift+C')
+    expect(formatAccelerator('Backspace', 'win32')).toBe('Del')
+    expect(formatAccelerator('Meta+K', 'win32')).toBe('Win+K')
+  })
+
+  it('出厂默认判断按平台', () => {
+    expect(defaultShortcut('paste', 'win32')).toBe('Ctrl+V')
+    expect(isDefaultShortcut('paste', 'Ctrl+V', 'win32')).toBe(true)
+    expect(isDefaultShortcut('paste', 'Meta+V', 'win32')).toBe(false)
+  })
+})
+
 describe('鼠标快捷键', () => {
   function mouse(button: number, modifiers: Partial<Omit<MouseEventLike, 'button'>> = {}): MouseEventLike {
     return { button, ctrlKey: false, altKey: false, shiftKey: false, metaKey: false, ...modifiers }
@@ -205,5 +236,68 @@ describe('isDefaultShortcut', () => {
   it('能判断某一项是否还是出厂值', () => {
     expect(isDefaultShortcut('commandPalette', 'Meta+K')).toBe(true)
     expect(isDefaultShortcut('commandPalette', 'Meta+J')).toBe(false)
+  })
+})
+
+describe('采集模式快捷键', () => {
+  it('默认是 ⇧⌘M，只支持键盘', () => {
+    expect(DEFAULT_SHORTCUTS.toggleCollectMode).toBe('Shift+Meta+M')
+    expect(supportsMouseBinding('toggleCollectMode')).toBe(false)
+  })
+
+  it('默认配置没有互相或与系统快捷键冲突', () => {
+    expect(shortcutConflicts(normalizeShortcutBindings(null, 'darwin'), 'darwin')).toEqual([])
+    expect(shortcutConflicts(normalizeShortcutBindings(null, 'win32'), 'win32')).toEqual([])
+  })
+
+  it('两个动作重复时能报出来', () => {
+    const conflicts = shortcutConflicts({ ...DEFAULT_SHORTCUTS, toolHand: 'Meta+K' }, 'darwin')
+    expect(
+      conflicts.some(
+        (item) =>
+          item.source === 'duplicate' &&
+          [item.label, item.otherLabel].includes('抓手工具') &&
+          [item.label, item.otherLabel].includes('命令面板')
+      )
+    ).toBe(true)
+  })
+
+  it('与系统快捷键冲突时能报出来', () => {
+    expect(reservedShortcutConflict('Meta+Tab', 'darwin')?.label).toBe('切换应用')
+    expect(reservedShortcutConflict('Ctrl+Alt+Delete', 'win32')?.label).toBe('安全选项')
+    expect(reservedShortcutConflict('Meta+Shift+M', 'darwin')).toBeNull()
+    const conflicts = shortcutConflicts({ ...DEFAULT_SHORTCUTS, toolHand: 'Meta+Tab' }, 'darwin')
+    expect(
+      conflicts.some(
+        (item) => item.source === 'system' && item.label === '抓手工具' && item.otherLabel === '切换应用'
+      )
+    ).toBe(true)
+  })
+})
+
+describe('逐颗键帽显示', () => {
+  it('mac 把修饰键和主键拆成独立键帽', () => {
+    expect(formatAcceleratorParts('Shift+Meta+Z', 'darwin')).toEqual(['⇧', '⌘', 'Z'])
+    expect(formatAcceleratorParts('Backspace', 'darwin')).toEqual(['⌫'])
+    expect(formatAcceleratorParts('Meta+MouseMiddle', 'darwin')).toEqual(['⌘', '中键'])
+  })
+
+  it('Windows 用文字修饰键，顺序固定', () => {
+    expect(formatAcceleratorParts('Shift+Ctrl+C', 'win32')).toEqual(['Ctrl', 'Shift', 'C'])
+    expect(formatAcceleratorParts('Alt+Meta+]', 'win32')).toEqual(['Alt', 'Win', ']'])
+  })
+
+  it('未设置或坏数据返回空数组', () => {
+    expect(formatAcceleratorParts(null, 'darwin')).toEqual([])
+    expect(formatAcceleratorParts('', 'win32')).toEqual([])
+  })
+
+  it('formatAccelerator 与拆分结果保持一致', () => {
+    expect(formatAcceleratorParts('Shift+Meta+Z', 'darwin').join('')).toBe(
+      formatAccelerator('Shift+Meta+Z', 'darwin')
+    )
+    expect(formatAcceleratorParts('Shift+Ctrl+C', 'win32').join('+')).toBe(
+      formatAccelerator('Shift+Ctrl+C', 'win32')
+    )
   })
 })

@@ -1,13 +1,13 @@
 import { useEffect, useState, type CSSProperties, type DragEvent, type ReactNode } from 'react'
-import { ArrowLeft, ArrowRight, Download, Earth, Heart, MagicStar, Menu, Refresh } from 'reicon-react'
+import { ArrowLeft, ArrowRight, Earth, Heart, MagicStar, Menu, Refresh } from 'reicon-react'
 import { displayUrl, MAX_START_SOURCES, START_PAGE_URL, type BrowserTab } from '../../../shared/browser'
 import { formatAccelerator } from '../../../shared/shortcuts'
 import { browserBridge } from '../bridge'
 import { useBrowserStore } from '../state/browser'
 import { useGraphStore } from '../state/graph'
-import { useProjectStore } from '../state/projects'
 import { useUiStore } from '../state/ui'
 import { NewTabIcon, TabCloseIcon } from './BrowserChromeIcons'
+import CollectModeToggle from './CollectModeToggle'
 
 /** 收藏状态比对：忽略末尾斜杠；站点根地址也匹配它的子页面。 */
 const favoriteKey = (url: string): string => url.replace(/\/+$/, '')
@@ -45,8 +45,6 @@ export default function BrowserPanel(): React.JSX.Element {
   const cancelCapture = useGraphStore((store) => store.cancelCapture)
   const capture = useGraphStore((store) => store.capture)
   const setNotice = useGraphStore((store) => store.setNotice)
-  const collectVisibleResults = useGraphStore((store) => store.collectVisibleResults)
-  const projectId = useProjectStore((store) => store.currentId)
   const shortcuts = useUiStore((store) => store.shortcuts)
 
   const [dragId, setDragId] = useState<string | null>(null)
@@ -167,41 +165,34 @@ export default function BrowserPanel(): React.JSX.Element {
             <NewTabIcon className="browser__newtab-icon" />
           </button>
         </div>
-        {capture?.mode === 'collect' && capture.live ? (
-          <button
-            type="button"
-            className="corner browser__collect"
-            aria-label="退出智能采集"
-            title="退出智能采集"
-            aria-pressed="true"
-            onClick={cancelCapture}
-          >
-            <MagicStar size={24} weight="Outline" />
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="corner browser__collect"
-            aria-label="智能采集"
-            title="智能采集"
-            disabled={!active}
-            onClick={() => void startCapture('collect')}
-          >
-            <MagicStar size={24} weight="Outline" />
-          </button>
-        )}
-        {active?.searchEngine && !(capture?.mode === 'collect' && capture.live) && (
-          <button
-            type="button"
-            className="corner browser__collect"
-            aria-label="收下当前可见结果"
-            title="把当前视野里的结果图收进画布"
-            disabled={!projectId}
-            onClick={() => void collectVisibleResults(projectId)}
-          >
-            <Download size={24} weight="Outline" />
-          </button>
-        )}
+        <div className="browser__collect-group">
+          {/* 冻结采集时整窗被截图覆盖层盖住，开关和退出放在覆盖层里；
+              这里只画不冻结态，避免同一组控件出现两份。 */}
+          {capture?.mode === 'collect' && capture.live && <CollectModeToggle />}
+          {capture?.mode === 'collect' && capture.live ? (
+            <button
+              type="button"
+              className="corner browser__collect"
+              aria-label="退出智能采集"
+              title="退出智能采集"
+              aria-pressed="true"
+              onClick={cancelCapture}
+            >
+              <MagicStar size={24} weight="Outline" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="corner browser__collect"
+              aria-label="智能采集"
+              title="智能采集"
+              disabled={!active}
+              onClick={() => void startCapture('collect')}
+            >
+              <MagicStar size={24} weight="Outline" />
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="browser__nav">

@@ -19,7 +19,6 @@ import {
   BRIDGE_STALE_MESSAGE,
   browserBridge,
   canvasBridge,
-  imageSearchBridge,
   localLibraryBridge
 } from '../bridge'
 import { useProjectStore } from './projects'
@@ -75,8 +74,6 @@ interface GraphState {
   importPaths: (projectId: string | null, paths: string[]) => Promise<ImportResult>
   importViaPicker: (projectId: string | null) => Promise<ImportResult>
   importClipboard: (projectId: string | null) => Promise<ImportResult>
-  /** 搜图结果页：把当前可见的大图批量收进画布（P1） */
-  collectVisibleResults: (projectId: string | null) => Promise<ImportResult>
   /** 从网页拖进来的图（D3.8–D3.11）：地址交给主进程二次下载，这里只管刷新画布 */
   importWeb: (projectId: string | null, request: WebDropRequest) => Promise<ImportResult>
   /** 从素材侧栏拖入：托管素材直接复用，外部文件先复制进 inspin素材。 */
@@ -89,8 +86,12 @@ interface GraphState {
   cutout: (projectId: string | null, targets: CutoutTarget[]) => Promise<ImportResult>
   /** 区域截图（D3.16）：正在框选的那一屏；null = 没在框 */
   capture: CaptureScreen | null
+  /** 正在冻结 / 不冻结之间切换；期间禁用开关，避免连续请求打架。 */
+  captureSwitching: boolean
   startCapture: (mode?: CaptureMode) => Promise<void>
   cancelCapture: () => void
+  /** 采集中切换冻结状态；下一次采集沿用这个选择。 */
+  setCaptureFreeze: (freeze: boolean) => Promise<void>
   /** 框好了：交选框给主进程去裁，并收进项目（`center` = 放哪儿，用视口中心） */
   commitCapture: (
     selection: WindowRect,
@@ -371,47 +372,6 @@ export const useGraphStore = create<GraphState>((set, get) => ({
     }
   },
 
-  async collectVisibleResults(projectId) {
-    if (!projectId) return NO_PROJECT
-    const api = imageSearchBridge()
-    if (!api) return NO_BRIDGE
-
-    set({ importing: true, notice: toast('loading', '正在收下可见结果') })
-    try {
-      const before = get().graph
-      // 从当前可见画布的中心开始排，用户收完就能看到
-      const viewport = get().viewport
-      const panel = useUiStore.getState().panel
-      const inset = panel.open ? (panel.dock === 'right' ? 0 : panel.width) : 0
-      const usable = Math.max(320, window.innerWidth - inset)
-      const layout = {
-        x: (inset + usable / 2 - viewport.x) / viewport.zoom,
-        y: (window.innerHeight / 2 - viewport.y) / viewport.zoom,
-        maxWidth: Math.max(320, (usable - 48) / viewport.zoom)
-      }
-      const result = await api.collect(projectId, layout)
-      if (result.ok) {
-        const added = addedNodeIds(before, result.graph)
-        if (added.length > 0) useSelectionStore.getState().setPending(added)
-        adoptImportedGraph(projectId, result.graph)
-        set({
-          graph: result.graph,
-          assets: result.assets,
-          notice: toast('success', `已收下 ${result.importedCount} 张图`)
-        })
-      } else {
-        set({ notice: toast('error', result.message, { dismissible: true }) })
-      }
-      return result
-    } catch {
-      const failed: ImportResult = { ok: false, message: '收下结果失败，可以单张拖回画布' }
-      set({ notice: toast('error', failed.message, { dismissible: true }) })
-      return failed
-    } finally {
-      set({ importing: false })
-    }
-  },
-
   async importWeb(projectId, request) {
     if (!projectId) return NO_PROJECT
     const canvas = canvasBridge()
@@ -515,6 +475,7 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
 
   capture: null,
+  captureSwitching: false,
 
   async startCapture(mode = 'capture') {
     const api = browserBridge()
@@ -528,8 +489,34 @@ export const useGraphStore = create<GraphState>((set, get) => ({
   },
 
   cancelCapture() {
-    set({ capture: null, captureFocus: null })
+    set({ capture: null, captureFocus: null, captureSwitching: false })
     void browserBridge()?.captureCancel()
+  },
+
+  async setCaptureFreeze(freeze) {
+    const current = get().capture
+    if (!current || current.mode !== 'collect' || get().captureSwitching) return
+    if (current.live === !freeze) return
+    if (get().importing) return
+    const api = browserBridge()
+    if (!api || typeof api.captureSwitch !== 'function') {
+      set({ notice: toast('error', BRIDGE_STALE_MESSAGE, { dismissible: true }) })
+      return
+    }
+    set({ captureSwitching: true })
+    try {
+      const result = await api.captureSwitch(freeze)
+      // 切换期间用户可能已经退出采集；结果晚到时不要再把采集界面拉回来。
+      if (get().capture !== current) return
+      if (result.ok) {
+        useUiStore.getState().setFreezeSmartCollection(freeze)
+        set({ capture: result, captureFocus: null })
+      } else {
+        set({ notice: toast('error', result.message, { dismissible: true }) })
+      }
+    } finally {
+      set({ captureSwitching: false })
+    }
   },
 
   async commitCapture(selection, center, options) {
